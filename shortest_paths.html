@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Shortest Paths Visualizer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: sans-serif; background: #f5f5f5; color: #222; }
+
+  h1 { text-align: center; padding: 16px; font-size: 1.2rem; background: #fff; border-bottom: 1px solid #ddd; }
+
+  .layout { display: flex; height: calc(100vh - 53px); }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    width: 220px;
+    background: #fff;
+    border-right: 1px solid #ddd;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  .sidebar h3 { font-size: .8rem; color: #888; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+
+  .algo-btns, .preset-btns, .mode-btns { display: flex; flex-direction: column; gap: 5px; }
+
+  button {
+    padding: 8px 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background: #fff;
+    cursor: pointer;
+    font-size: .82rem;
+    text-align: left;
+  }
+  button:hover { background: #f0f0f0; }
+  button.active { background: #222; color: #fff; border-color: #222; }
+  button.danger { background: #e74c3c; color: #fff; border-color: #e74c3c; }
+  button.go { background: #27ae60; color: #fff; border-color: #27ae60; }
+
+  select, input[type=number] {
+    width: 100%;
+    padding: 7px 8px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: .82rem;
+    background: #fff;
+  }
+
+  label { font-size: .78rem; color: #555; display: block; margin-bottom: 3px; }
+
+  .row { display: flex; gap: 6px; }
+  .row > * { flex: 1; }
+
+  /* ── CANVAS ── */
+  .canvas-wrap { flex: 1; position: relative; background: #fafafa; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  /* ── RIGHT PANEL ── */
+  .right {
+    width: 240px;
+    background: #fff;
+    border-left: 1px solid #ddd;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
+  .playback {
+    padding: 12px;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .playback .row { flex-wrap: wrap; }
+
+  .step-info {
+    font-size: .75rem;
+    color: #888;
+    text-align: center;
+  }
+
+  .explanation {
+    padding: 12px;
+    border-bottom: 1px solid #ddd;
+    font-size: .78rem;
+    line-height: 1.6;
+    min-height: 90px;
+    color: #333;
+  }
+
+  .explanation b { color: #222; }
+  .explanation .phase { font-weight: bold; color: #2980b9; }
+  .explanation .hl { color: #27ae60; font-weight: bold; }
+  .explanation .warn { color: #e74c3c; font-weight: bold; }
+
+  .dist-section { padding: 12px; overflow-y: auto; }
+  .dist-section h3 { font-size: .78rem; color: #888; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+  th { color: #888; text-align: left; padding: 3px 6px; border-bottom: 1px solid #eee; font-weight: 600; }
+  td { padding: 4px 6px; border-bottom: 1px solid #f0f0f0; }
+  tr.updated td { background: #eafaf1; }
+  tr.active-row td { background: #eaf4fb; }
+
+  .hint { font-size: .72rem; color: #aaa; text-align: center; padding: 6px; }
+  .warn-box { background: #fdecea; border: 1px solid #f5c6cb; border-radius: 4px; padding: 7px 9px; font-size: .74rem; color: #c0392b; display: none; }
+  .warn-box.show { display: block; }
+</style>
+</head>
+<body>
+
+<h1>Shortest Paths Visualizer — BFS · Dijkstra · Bellman–Ford</h1>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <div>
+      <h3>Algorithm</h3>
+      <div class="algo-btns">
+        <button class="active" id="tab-bfs" onclick="setAlgo('bfs')">BFS (unweighted)</button>
+        <button id="tab-dijkstra" onclick="setAlgo('dijkstra')">Dijkstra</button>
+        <button id="tab-bellman" onclick="setAlgo('bellman')">Bellman–Ford</button>
+      </div>
+    </div>
+
+    <div>
+      <h3>Presets</h3>
+      <div class="preset-btns">
+        <button onclick="loadPreset(0)">Simple (BFS demo)</button>
+        <button onclick="loadPreset(1)">Weighted (Dijkstra)</button>
+        <button onclick="loadPreset(2)">Negative weights</button>
+        <button onclick="loadPreset(3)">Negative cycle</button>
+      </div>
+    </div>
+
+    <div>
+      <h3>Edit Mode</h3>
+      <div class="mode-btns">
+        <button class="active" id="mode-node" onclick="setMode('node')">Add Node</button>
+        <button id="mode-edge" onclick="setMode('edge')">Add Edge</button>
+        <button id="mode-move" onclick="setMode('move')">Move Node</button>
+        <button id="mode-del"  onclick="setMode('del')">Delete</button>
+      </div>
+      <div id="edge-opts" style="display:none;margin-top:8px">
+        <div class="row">
+          <div>
+            <label>Weight</label>
+            <input type="number" id="ew" value="1">
+          </div>
+          <div>
+            <label>Directed</label>
+            <select id="edir">
+              <option value="0">No</option>
+              <option value="1">Yes</option>
+            </select>
+          </div>
+        </div>
+        <div class="hint">Click node A → node B</div>
+      </div>
+    </div>
+
+    <div>
+      <label>Source</label>
+      <select id="src-sel"></select>
+    </div>
+    <div>
+      <label>Target (highlight path)</label>
+      <select id="tgt-sel"></select>
+    </div>
+
+    <button class="danger" onclick="clearGraph()">Clear Graph</button>
+
+    <div class="warn-box" id="neg-warn">⚠ Negative weights detected. Use Bellman–Ford for correct results.</div>
+
+  </div>
+
+  <!-- CANVAS -->
+  <div class="canvas-wrap">
+    <canvas id="c"></canvas>
+    <div class="hint" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%)" id="chint">Click to add a node</div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right">
+    <div class="playback">
+      <div class="row">
+        <button class="go" id="run-btn" onclick="toggleRun()">▶ Run</button>
+        <button onclick="stepFwd()">Step →</button>
+        <button onclick="stepBk()">← Back</button>
+      </div>
+      <button class="danger" onclick="resetAlgo()">↺ Reset</button>
+      <div class="step-info" id="step-info">—</div>
+    </div>
+
+    <div class="explanation" id="explain">
+      Select a source and press <b>Run</b> or <b>Step</b>.
+    </div>
+
+    <div class="dist-section">
+      <h3>Distances &amp; Predecessors</h3>
+      <table>
+        <thead><tr><th>Node</th><th>dist</th><th>pred</th></tr></thead>
+        <tbody id="dtbody"><tr><td colspan="3" style="color:#aaa">—</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── DATA ───────────────────────────────────────────────
+let nodes = [], edges = [], nid = 0, eid = 0;
+let algo = 'bfs';
+let steps = [], step = -1;
+let running = false, timer = null;
+let nStates = {}, eStates = {};
+let edgeFrom = null, dragging = null, dragOff = {x:0,y:0};
+let editMode = 'node';
+
+// ─── CANVAS ─────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const R = 20;
+
+function resize() {
+  const p = canvas.parentElement.getBoundingClientRect();
+  canvas.width = p.width; canvas.height = p.height; draw();
+}
+window.addEventListener('resize', resize);
+
+function wx(rx){ return rx * canvas.width; }
+function wy(ry){ return ry * canvas.height; }
+function rx(wx){ return wx / canvas.width; }
+function ry(wy){ return wy / canvas.height; }
+
+// ─── PRESETS ────────────────────────────────────────────
+const PRESETS = [
+  { nodes:[{id:0,x:.15,y:.5,l:'A'},{id:1,x:.38,y:.2,l:'B'},{id:2,x:.38,y:.78,l:'C'},{id:3,x:.62,y:.2,l:'D'},{id:4,x:.62,y:.78,l:'E'},{id:5,x:.85,y:.5,l:'F'}],
+    edges:[{id:0,a:0,b:1,w:1,d:0},{id:1,a:0,b:2,w:1,d:0},{id:2,a:1,b:3,w:1,d:0},{id:3,a:2,b:4,w:1,d:0},{id:4,a:3,b:5,w:1,d:0},{id:5,a:4,b:5,w:1,d:0},{id:6,a:1,b:2,w:1,d:0}] },
+  { nodes:[{id:0,x:.12,y:.5,l:'S'},{id:1,x:.35,y:.2,l:'A'},{id:2,x:.35,y:.78,l:'B'},{id:3,x:.62,y:.2,l:'C'},{id:4,x:.62,y:.78,l:'D'},{id:5,x:.88,y:.5,l:'T'}],
+    edges:[{id:0,a:0,b:1,w:4,d:1},{id:1,a:0,b:2,w:2,d:1},{id:2,a:1,b:3,w:5,d:1},{id:3,a:2,b:1,w:1,d:1},{id:4,a:2,b:4,w:7,d:1},{id:5,a:3,b:5,w:3,d:1},{id:6,a:4,b:5,w:1,d:1},{id:7,a:1,b:4,w:2,d:1}] },
+  { nodes:[{id:0,x:.15,y:.5,l:'S'},{id:1,x:.4,y:.2,l:'A'},{id:2,x:.4,y:.78,l:'B'},{id:3,x:.7,y:.35,l:'C'},{id:4,x:.88,y:.65,l:'T'}],
+    edges:[{id:0,a:0,b:1,w:6,d:1},{id:1,a:0,b:2,w:7,d:1},{id:2,a:1,b:2,w:8,d:1},{id:3,a:1,b:3,w:5,d:1},{id:4,a:2,b:3,w:-3,d:1},{id:5,a:2,b:4,w:9,d:1},{id:6,a:3,b:4,w:7,d:1},{id:7,a:3,b:1,w:-2,d:1}] },
+  { nodes:[{id:0,x:.18,y:.5,l:'S'},{id:1,x:.45,y:.2,l:'A'},{id:2,x:.72,y:.5,l:'B'},{id:3,x:.45,y:.78,l:'C'}],
+    edges:[{id:0,a:0,b:1,w:3,d:1},{id:1,a:1,b:2,w:4,d:1},{id:2,a:2,b:3,w:-6,d:1},{id:3,a:3,b:1,w:2,d:1},{id:4,a:0,b:3,w:8,d:1}] }
+];
+
+function loadPreset(i) {
+  const p = PRESETS[i];
+  nid = 0; eid = 0;
+  nodes = p.nodes.map(n => { nid = Math.max(nid, n.id+1); return {...n}; });
+  edges = p.edges.map(e => { eid = Math.max(eid, e.id+1); return {...e}; });
+  resetAlgo(); updateSelects(); checkNeg(); draw();
+}
+
+// ─── DRAWING ────────────────────────────────────────────
+const COLORS = {
+  default:  { fill:'#fff',   stroke:'#bbb', text:'#333' },
+  source:   { fill:'#d5f5e3',stroke:'#27ae60',text:'#1a7a3e' },
+  target:   { fill:'#fdebd0',stroke:'#e67e22',text:'#a04000' },
+  active:   { fill:'#d6eaf8',stroke:'#2980b9',text:'#1a5276' },
+  frontier: { fill:'#f5eef8',stroke:'#8e44ad',text:'#6c3483' },
+  visited:  { fill:'#f2f3f4',stroke:'#aaa',  text:'#888' },
+  path:     { fill:'#fdebd0',stroke:'#e67e22',text:'#a04000' },
+  negcycle: { fill:'#fdedec',stroke:'#e74c3c',text:'#c0392b' },
+};
+const ECOL = {
+  default:'#ccc', active:'#2980b9', relaxed:'#8e44ad', path:'#e67e22', visited:'#ddd', negcycle:'#e74c3c'
+};
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  edges.forEach(drawEdge);
+  nodes.forEach(drawNode);
+}
+
+function drawNode(n) {
+  const x = wx(n.x), y = wy(n.y);
+  const s = nStates[n.id] || 'default';
+  const c = COLORS[s];
+  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI*2);
+  ctx.fillStyle = c.fill; ctx.fill();
+  ctx.strokeStyle = c.stroke; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = c.text; ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(n.l, x, y);
+
+  // Distance label
+  if (steps.length && step >= 0) {
+    const d = steps[step].dist[n.id];
+    if (d !== undefined) {
+      const dStr = d === Infinity ? '∞' : d === -Infinity ? '-∞' : String(d);
+      ctx.fillStyle = '#555'; ctx.font = '10px sans-serif';
+      ctx.fillText(dStr, x, y - R - 7);
+    }
+  }
+}
+
+function drawEdge(e) {
+  const a = nodeById(e.a), b = nodeById(e.b);
+  if (!a || !b) return;
+  const x1=wx(a.x),y1=wy(a.y),x2=wx(b.x),y2=wy(b.y);
+  const dx=x2-x1,dy=y2-y1,len=Math.sqrt(dx*dx+dy*dy);
+  if (len<1) return;
+  const ux=dx/len,uy=dy/len;
+  const hasRev = e.d && edges.some(e2=>e2.id!==e.id&&e2.a===e.b&&e2.b===e.a);
+  const nx=-uy,ny=ux, curve=hasRev?25:0;
+
+  const sx=x1+ux*(R+2),sy=y1+uy*(R+2);
+  const ex=x2-ux*(R+6),ey=y2-uy*(R+6);
+  const mx=(sx+ex)/2+nx*curve, my=(sy+ey)/2+ny*curve;
+
+  const col = ECOL[eStates[e.id]||'default'];
+  ctx.beginPath();
+  ctx.moveTo(sx,sy);
+  if (curve) ctx.quadraticCurveTo(mx,my,ex,ey);
+  else ctx.lineTo(ex,ey);
+  ctx.strokeStyle=col; ctx.lineWidth=2; ctx.stroke();
+
+  // Arrowhead
+  if (e.d) {
+    let ax=ex,ay=ey,ang=Math.atan2(ey-sy,ex-sx);
+    if (curve) { ang=Math.atan2(ey-my,ex-mx); }
+    ctx.save(); ctx.translate(ax,ay); ctx.rotate(ang);
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-9,-5); ctx.lineTo(-9,5);
+    ctx.closePath(); ctx.fillStyle=col; ctx.fill(); ctx.restore();
+  }
+
+  // Weight label
+  const lx=(sx+ex)/2+nx*(curve?14:0), ly=(sy+ey)/2+ny*(curve?14:0);
+  ctx.font='bold 11px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle='#fff';
+  const tw=ctx.measureText(String(e.w)).width;
+  ctx.fillRect(lx-tw/2-2,ly-7,tw+4,14);
+  ctx.fillStyle = e.w<0 ? '#e74c3c' : '#555';
+  ctx.fillText(String(e.w),lx,ly);
+}
+
+// ─── CANVAS INTERACTION ─────────────────────────────────
+function canvasPos(ev) {
+  const r2=canvas.getBoundingClientRect();
+  return { x:(ev.clientX-r2.left)*(canvas.width/r2.width), y:(ev.clientY-r2.top)*(canvas.height/r2.height) };
+}
+function nodeAt(x,y){ return nodes.find(n=>{const dx=wx(n.x)-x,dy=wy(n.y)-y;return dx*dx+dy*dy<=(R+4)*(R+4);}); }
+
+canvas.addEventListener('mousedown', ev => {
+  if (running) return;
+  const p=canvasPos(ev); const hit=nodeAt(p.x,p.y);
+  if (editMode==='move'){ if(hit){dragging=hit; dragOff={x:wx(hit.x)-p.x,y:wy(hit.y)-p.y};} return; }
+  if (editMode==='del'){
+    if(hit){ nodes=nodes.filter(n=>n.id!==hit.id); edges=edges.filter(e=>e.a!==hit.id&&e.b!==hit.id); }
+    else { const e2=edgeAt(p.x,p.y); if(e2) edges=edges.filter(e=>e.id!==e2.id); }
+    resetAlgo(); updateSelects(); checkNeg(); draw(); return;
+  }
+  if (editMode==='node' && !hit){ addNode(rx(p.x),ry(p.y)); return; }
+  if (editMode==='edge' && hit){
+    if (!edgeFrom){ edgeFrom=hit.id; draw(); }
+    else { if(edgeFrom!==hit.id){ addEdge(edgeFrom,hit.id); } edgeFrom=null; draw(); }
+    return;
+  }
+});
+canvas.addEventListener('mousemove', ev=>{
+  if(!dragging) return;
+  const p=canvasPos(ev);
+  dragging.x=Math.max(.03,Math.min(.97,rx(p.x+dragOff.x)));
+  dragging.y=Math.max(.05,Math.min(.95,ry(p.y+dragOff.y)));
+  draw();
+});
+canvas.addEventListener('mouseup',()=>{ dragging=null; });
+
+function edgeAt(x,y){
+  for(const e of edges){
+    const a=nodeById(e.a),b=nodeById(e.b); if(!a||!b) continue;
+    const x1=wx(a.x),y1=wy(a.y),x2=wx(b.x),y2=wy(b.y);
+    const dx=x2-x1,dy=y2-y1,len2=dx*dx+dy*dy; if(len2<1) continue;
+    const t=Math.max(0,Math.min(1,((x-x1)*dx+(y-y1)*dy)/len2));
+    const px=x1+t*dx-x,py=y1+t*dy-y;
+    if(px*px+py*py<100) return e;
+  }
+  return null;
+}
+
+// ─── GRAPH MUTATIONS ────────────────────────────────────
+function addNode(rrx,rry){
+  const labels='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  nodes.push({id:nid++,x:rrx,y:rry,l:labels[nodes.length%26]});
+  updateSelects(); resetAlgo(); draw();
+}
+function addEdge(a,b){
+  const w=parseInt(document.getElementById('ew').value)||1;
+  const d=document.getElementById('edir').value==='1';
+  edges.push({id:eid++,a,b,w,d:d?1:0});
+  checkNeg(); resetAlgo(); draw();
+}
+function nodeById(id){ return nodes.find(n=>n.id===id); }
+function clearGraph(){ nodes=[];edges=[];nid=0;eid=0; resetAlgo();updateSelects();checkNeg();draw(); }
+function checkNeg(){ document.getElementById('neg-warn').classList.toggle('show',edges.some(e=>e.w<0)); }
+
+// ─── UI ─────────────────────────────────────────────────
+function setAlgo(a){
+  algo=a;
+  ['bfs','dijkstra','bellman'].forEach(x=>document.getElementById('tab-'+x).classList.toggle('active',x===a));
+  resetAlgo();
+}
+function setMode(m){
+  editMode=m; edgeFrom=null;
+  ['node','edge','move','del'].forEach(x=>document.getElementById('mode-'+x).classList.toggle('active',x===m));
+  document.getElementById('edge-opts').style.display=m==='edge'?'block':'none';
+  const hints={node:'Click to add a node',edge:'Click node A → node B',move:'Drag a node',del:'Click node or edge to delete'};
+  document.getElementById('chint').textContent=hints[m];
+  draw();
+}
+function updateSelects(){
+  ['src-sel','tgt-sel'].forEach((id,i)=>{
+    const el=document.getElementById(id);
+    const old=el.value;
+    el.innerHTML=(i===0?'<option value="">— source —</option>':'<option value="">— all —</option>');
+    nodes.forEach(n=>el.innerHTML+=`<option value="${n.id}">${n.l}</option>`);
+    if(nodes.find(n=>String(n.id)===old)) el.value=old;
+  });
+}
+
+// ─── STEP GENERATORS ────────────────────────────────────
+function buildAdj(){
+  const adj={};
+  nodes.forEach(n=>adj[n.id]=[]);
+  edges.forEach(e=>{
+    adj[e.a].push({to:e.b,w:e.w,eid:e.id});
+    if(!e.d) adj[e.b].push({to:e.a,w:e.w,eid:e.id});
+  });
+  return adj;
+}
+
+function mkStep(dist,pred,ns,es,phase,explain,extra){
+  return {dist:{...dist},pred:{...pred},ns:{...ns},es:{...es},phase,explain,...extra};
+}
+
+// BFS
+function genBFS(src){
+  const dist={},pred={},ns={},es={};
+  nodes.forEach(n=>{dist[n.id]=Infinity;pred[n.id]=null;ns[n.id]='default';});
+  edges.forEach(e=>es[e.id]='default');
+  dist[src]=0; ns[src]='source';
+  const queue=[src]; const visited=new Set([src]);
+  const out=[];
+  const adj=buildAdj();
+
+  out.push(mkStep(dist,pred,ns,es,'init',`<span class="phase">INIT</span> — Set dist[<b>${nodeById(src).l}</b>] = 0, all others ∞. Add <b>${nodeById(src).l}</b> to queue.`,{queue:[...queue]}));
+
+  while(queue.length){
+    const u=queue.shift(); const un=nodeById(u);
+    ns[u]=u===src?'source':'active';
+    out.push(mkStep(dist,pred,ns,es,'process',`<span class="phase">DEQUEUE</span> <b>${un.l}</b> (dist=${dist[u]}). Check its neighbors.`,{queue:[...queue],activeNode:u}));
+
+    for(const {to,w,eid} of adj[u]){
+      const vn=nodeById(to); es[eid]='active';
+      if(!visited.has(to)){
+        dist[to]=dist[u]+1; pred[to]=u; visited.add(to); queue.push(to); ns[to]='frontier';
+        out.push(mkStep(dist,pred,ns,es,'relax',`<span class="hl">FOUND</span> <b>${vn.l}</b> via <b>${un.l}→${vn.l}</b>. dist = <b>${dist[to]}</b>. Enqueue.`,{queue:[...queue],updated:to}));
+        es[eid]='visited';
+      } else {
+        es[eid]='visited';
+        out.push(mkStep(dist,pred,ns,es,'process',`<b>${vn.l}</b> already visited. Skip.`,{queue:[...queue]}));
+      }
+    }
+    ns[u]=u===src?'source':'visited';
+  }
+  return out;
+}
+
+// Dijkstra
+function genDijkstra(src){
+  const dist={},pred={},ns={},es={};
+  nodes.forEach(n=>{dist[n.id]=Infinity;pred[n.id]=null;ns[n.id]='default';});
+  edges.forEach(e=>es[e.id]='default');
+  dist[src]=0; ns[src]='source';
+  const visited=new Set(); const adj=buildAdj(); const out=[];
+
+  out.push(mkStep(dist,pred,ns,es,'init',`<span class="phase">INIT</span> — dist[<b>${nodeById(src).l}</b>] = 0, all others ∞. Insert all nodes in priority queue.`,{}));
+
+  while(true){
+    let u=null,minD=Infinity;
+    nodes.forEach(n=>{ if(!visited.has(n.id)&&dist[n.id]<minD){minD=dist[n.id];u=n.id;} });
+    if(u===null||dist[u]===Infinity) break;
+    visited.add(u); const un=nodeById(u);
+    ns[u]=u===src?'source':'active';
+    out.push(mkStep(dist,pred,ns,es,'process',`<span class="phase">EXTRACT-MIN</span> <b>${un.l}</b> (dist=${dist[u]}). Finalized. Check edges.`,{activeNode:u}));
+
+    for(const {to,w,eid} of adj[u]){
+      if(visited.has(to)) continue;
+      const vn=nodeById(to); es[eid]='active';
+      const nd=dist[u]+w;
+      if(nd<dist[to]){
+        const old=dist[to]; dist[to]=nd; pred[to]=u; ns[to]='frontier';
+        out.push(mkStep(dist,pred,ns,es,'relax',`<span class="hl">RELAX</span> <b>${un.l}→${vn.l}</b> (w=${w}): ${dist[u]}+${w}=<b>${nd}</b> < ${old===Infinity?'∞':old}. Update.`,{updated:to}));
+        es[eid]='relaxed';
+      } else {
+        out.push(mkStep(dist,pred,ns,es,'process',`Edge <b>${un.l}→${vn.l}</b>: ${dist[u]}+${w}=${nd} ≥ ${dist[to]===Infinity?'∞':dist[to]}. No update.`,{}));
+        es[eid]='visited';
+      }
+    }
+    ns[u]=u===src?'source':'visited';
+  }
+  return out;
+}
+
+// Bellman-Ford
+function genBellman(src){
+  const dist={},pred={},ns={},es={};
+  nodes.forEach(n=>{dist[n.id]=Infinity;pred[n.id]=null;ns[n.id]='default';});
+  edges.forEach(e=>es[e.id]='default');
+  dist[src]=0; ns[src]='source';
+  const N=nodes.length; const out=[];
+  const allE=[];
+  edges.forEach(e=>{ allE.push({a:e.a,b:e.b,w:e.w,id:e.id}); if(!e.d) allE.push({a:e.b,b:e.a,w:e.w,id:e.id}); });
+
+  out.push(mkStep(dist,pred,ns,es,'init',`<span class="phase">INIT</span> — dist[<b>${nodeById(src).l}</b>] = 0, all ∞. Will run <b>${N-1}</b> iterations + 1 cycle check.`,{}));
+
+  for(let i=1;i<=N;i++){
+    const isCheck=(i===N);
+    out.push(mkStep(dist,pred,ns,es,isCheck?'neg':'process',
+      isCheck?`<span class="warn">CYCLE CHECK</span> — Extra pass. If any dist decreases → negative cycle!`
+             :`<span class="phase">ITERATION ${i}/${N-1}</span> — Relax all edges.`,{}));
+
+    for(const e of allE){
+      const un=nodeById(e.a),vn=nodeById(e.b); if(!un||!vn) continue;
+      es[e.id]='active';
+      if(dist[e.a]!==Infinity){
+        const nd=dist[e.a]+e.w;
+        if(nd<dist[e.b]){
+          if(isCheck){
+            ns[e.a]='negcycle'; ns[e.b]='negcycle'; es[e.id]='negcycle';
+            dist[e.b]=-Infinity;
+            out.push(mkStep(dist,pred,ns,es,'neg',`<span class="warn">NEGATIVE CYCLE</span> on <b>${un.l}→${vn.l}</b>! dist still decreasing. Shortest paths = −∞.`,{negCycle:true}));
+          } else {
+            const old=dist[e.b]; dist[e.b]=nd; pred[e.b]=e.a; ns[e.b]='frontier';
+            out.push(mkStep(dist,pred,ns,es,'relax',`<span class="hl">RELAX</span> <b>${un.l}→${vn.l}</b> (w=${e.w}): ${dist[e.a]}+${e.w}=<b>${nd}</b> < ${old===Infinity?'∞':old}. Update.`,{updated:e.b}));
+            es[e.id]='relaxed';
+          }
+        } else {
+          es[e.id]='visited';
+        }
+      } else { es[e.id]='default'; }
+    }
+  }
+  return out;
+}
+
+function addFinal(steps,src,tgt){
+  if(!steps.length) return;
+  const last=steps[steps.length-1];
+  const fs={...last,ns:{...last.ns},es:{...last.es}};
+  fs.phase='done';
+
+  if(tgt!==null&&!last.negCycle){
+    const pred=fs.pred; let cur=tgt; const path=[cur]; const vis=new Set();
+    while(cur!==src&&cur!==null&&!vis.has(cur)){ vis.add(cur); const p=pred[cur]; if(p===null||p===undefined) break; path.push(p); cur=p; }
+    path.forEach(id=>{ fs.ns[id]=id===src?'source':id===tgt?'target':'path'; });
+    for(let i=0;i<path.length-1;i++){
+      const a=path[i],b=path[i+1];
+      const e=edges.find(e=>(e.a===b&&e.b===a)||(!e.d&&((e.a===a&&e.b===b)||(e.a===b&&e.b===a))));
+      if(e) fs.es[e.id]='path';
+    }
+    const d=fs.dist[tgt];
+    const pathStr=path.map(id=>nodeById(id)?.l).filter(Boolean).reverse().join(' → ');
+    fs.explain=`<span class="hl">DONE</span> — Shortest path: <b>${pathStr}</b>. Distance = <b>${d===Infinity?'∞ (unreachable)':d}</b>.`;
+  } else if(last.negCycle){
+    fs.explain=`<span class="warn">DONE — Negative cycle detected. Shortest paths are undefined (−∞).</span>`;
+  } else {
+    fs.explain=`<span class="hl">DONE</span> — All distances computed. Select a target to see a path.`;
+  }
+  steps.push(fs);
+}
+
+// ─── ALGO CONTROL ────────────────────────────────────────
+function getSrc(){ const v=document.getElementById('src-sel').value; return v===''?null:parseInt(v); }
+function getTgt(){ const v=document.getElementById('tgt-sel').value; return v===''?null:parseInt(v); }
+
+function resetAlgo(){
+  if(timer){clearInterval(timer);timer=null;} running=false;
+  steps=[];step=-1;
+  nStates={};eStates={};
+  nodes.forEach(n=>nStates[n.id]='default');
+  edges.forEach(e=>eStates[e.id]='default');
+  document.getElementById('explain').innerHTML='Select a source and press <b>Run</b> or <b>Step</b>.';
+  document.getElementById('step-info').textContent='—';
+  document.getElementById('dtbody').innerHTML='<tr><td colspan="3" style="color:#aaa">—</td></tr>';
+  document.getElementById('run-btn').textContent='▶ Run';
+  document.getElementById('neg-cycle-warn')?.classList.remove('show');
+  draw();
+}
+
+function build(){
+  const src=getSrc();
+  if(src===null){alert('Pick a source node.');return false;}
+  if(!nodes.length){alert('Graph is empty.');return false;}
+  const tgt=getTgt();
+  let gen;
+  if(algo==='bfs') gen=genBFS(src);
+  else if(algo==='dijkstra') gen=genDijkstra(src);
+  else gen=genBellman(src);
+  addFinal(gen,src,tgt);
+  steps=gen; return true;
+}
+
+function applyStep(i){
+  const s=steps[i]; if(!s) return;
+  nStates={...s.ns}; eStates={...s.es};
+  const src=getSrc(),tgt=getTgt();
+  if(src!==null&&nStates[src]!=='active') nStates[src]='source';
+  if(tgt!==null&&s.phase==='done') nStates[tgt]='target';
+  document.getElementById('step-info').textContent=`Step ${i+1} / ${steps.length}`;
+  document.getElementById('explain').innerHTML=s.explain;
+  updateTable(s.dist,s.pred,s.updated,s.activeNode);
+  draw();
+}
+
+function stepFwd(){
+  if(running) return;
+  if(step<0){ if(!build()) return; step=0; }
+  else if(step<steps.length-1) step++;
+  applyStep(step);
+}
+function stepBk(){
+  if(running||step<=0) return;
+  step--; applyStep(step);
+}
+function toggleRun(){
+  if(running){
+    clearInterval(timer);timer=null;running=false;
+    document.getElementById('run-btn').textContent='▶ Run'; return;
+  }
+  if(step<0||step>=steps.length-1){ resetAlgo(); if(!build()) return; step=0; }
+  running=true; document.getElementById('run-btn').textContent='⏸ Pause';
+  timer=setInterval(()=>{
+    if(step>=steps.length-1){ clearInterval(timer);timer=null;running=false;document.getElementById('run-btn').textContent='▶ Run'; applyStep(step); return; }
+    applyStep(step); step++;
+  },700);
+}
+
+function updateTable(dist,pred,updated,active){
+  if(!dist){ document.getElementById('dtbody').innerHTML='<tr><td colspan="3" style="color:#aaa">—</td></tr>'; return; }
+  document.getElementById('dtbody').innerHTML=nodes.map(n=>{
+    const d=dist[n.id]; const p=pred[n.id];
+    const dStr=d===Infinity?'∞':d===-Infinity?'−∞':String(d);
+    const pStr=p!==null&&p!==undefined?nodeById(p)?.l:'—';
+    const cls=n.id===updated?'updated':n.id===active?'active-row':'';
+    return `<tr class="${cls}"><td><b>${n.l}</b></td><td>${dStr}</td><td>${pStr}</td></tr>`;
+  }).join('');
+}
+
+// ─── INIT ────────────────────────────────────────────────
+resize();
+loadPreset(0);
+setMode('node');
+</script>
+</body>
+</html>
