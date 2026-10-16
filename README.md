@@ -26,7 +26,7 @@ An interactive browser-based tool for visualizing and understanding shortest pat
 
 No installation needed. Download the file and open it in any browser:
 
-open shortest_paths.html
+open index.html
 
 Or just double-click the file in Finder.
 
